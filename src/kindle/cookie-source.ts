@@ -18,7 +18,7 @@ import {
   LibrarySearchResponseSchema,
   StartReadingResponseSchema,
 } from "./api-types.js";
-import { toKindleBook } from "./mapping.js";
+import { parseMetadataEndPosition, toKindleBook } from "./mapping.js";
 import type { KindleSource } from "./source.js";
 import type { HttpRequest, HttpTransport } from "./transport.js";
 
@@ -145,12 +145,30 @@ export class CookieApiSource implements KindleSource {
     );
   }
 
+  /**
+   * Fetch the JSONP metadata blob for a book and extract the end position.
+   * Uses plain `fetch` (not the CycleTLS transport) since the metadata URL
+   * is a CDN asset that doesn't require TLS fingerprinting.
+   */
+  async fetchMetadataEndPosition(metadataUrl: string): Promise<number | undefined> {
+    const res = await fetch(metadataUrl);
+    const text = await res.text();
+    return parseMetadataEndPosition(text);
+  }
+
   async listBooks(): Promise<readonly KindleBook[]> {
     const items = await this.fetchLibrary();
     const books = await Promise.all(
       items.map(async (item) => {
         try {
           const reading = await this.fetchReading(item.asin);
+          // If endPosition is missing but metadataUrl present, try to fill it in
+          if ((reading.endPosition == null) && reading.metadataUrl) {
+            const endPosition = await this.fetchMetadataEndPosition(reading.metadataUrl).catch(() => undefined);
+            if (endPosition != null) {
+              return toKindleBook(item, { ...reading, endPosition });
+            }
+          }
           return toKindleBook(item, reading);
         } catch (err) {
           process.stderr.write(

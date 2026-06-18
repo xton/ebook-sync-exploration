@@ -48,6 +48,8 @@ export const StartReadingResponseSchema = z
     lastPageReadData: LastPageReadDataSchema.nullish(),
     /** "start reading location" indicator; kept for completeness. */
     srl: z.number().nullish(),
+    /** URL to the JSONP metadata file containing spine/endPosition info. */
+    metadataUrl: z.string().nullish(),
   })
   // The endpoint returns many other fields (format metadata, restrictions, …)
   // that we don't model; ignore them rather than failing.
