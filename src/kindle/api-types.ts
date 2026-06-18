@@ -33,8 +33,8 @@ export const LastPageReadDataSchema = z.object({
   /** Kindle internal position (byte-offset units), NOT percent or page. */
   position: z.number(),
   /** Sync timestamp; epoch milliseconds. */
-  syncTime: z.number().optional(),
-  deviceName: z.string().optional(),
+  syncTime: z.number().nullish(),
+  deviceName: z.string().nullish(),
 });
 export type LastPageReadData = z.infer<typeof LastPageReadDataSchema>;
 
