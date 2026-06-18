@@ -77,6 +77,17 @@ describe("CycleTlsTransport", () => {
     expect(res.status).toBe(403);
   });
 
+  it("decompresses gzip-encoded Buffer responses", async () => {
+    const { gzipSync } = await import("node:zlib");
+    const payload = JSON.stringify({ itemsList: [] });
+    const compressed = gzipSync(Buffer.from(payload, "utf8"));
+    const bufferData = { type: "Buffer", data: Array.from(compressed) };
+    mockClient.get.mockResolvedValue({ status: 200, data: bufferData });
+    const transport = new CycleTlsTransport();
+    const res = await transport.get({ url: "https://x.com", headers: {} });
+    expect(res.body).toBe(payload);
+  });
+
   it("propagates non-200 status codes", async () => {
     mockClient.get.mockResolvedValue({ status: 403, data: "Forbidden" });
     const transport = new CycleTlsTransport();

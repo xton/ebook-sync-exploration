@@ -6,6 +6,8 @@
  * transport uses CycleTLS to impersonate Chrome's TLS handshake locally — no
  * cookies or data leave the machine via a third party.
  */
+import { gunzipSync } from "node:zlib";
+
 // CycleTLS is a CJS package; the callable initialiser is on .default at runtime.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const initCycleTLS = (await import("cycletls")).default as unknown as (
@@ -19,8 +21,8 @@ import type { HttpRequest, HttpResponse, HttpTransport } from "./transport.js";
 
 /**
  * CycleTLS can return the response body as a string, a plain object (already
- * parsed JSON), or a Node Buffer (when the response was binary / not decoded).
- * Normalise all three to a UTF-8 string so callers always get text.
+ * parsed JSON), or a Node Buffer (when the response is binary or gzip-compressed).
+ * Normalise all to a UTF-8 string so callers always get text.
  */
 function decodeBody(data: unknown): string {
   if (typeof data === "string") return data;
@@ -32,9 +34,12 @@ function decodeBody(data: unknown): string {
     (data as Record<string, unknown>)["type"] === "Buffer" &&
     Array.isArray((data as Record<string, unknown>)["data"])
   ) {
-    return Buffer.from(
-      (data as { type: string; data: number[] }).data,
-    ).toString("utf8");
+    const bytes = Buffer.from((data as { type: string; data: number[] }).data);
+    // Decompress gzip responses (magic bytes 1f 8b).
+    if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+      return gunzipSync(bytes).toString("utf8");
+    }
+    return bytes.toString("utf8");
   }
   // Anything else (already-parsed object) — re-serialise so callers can JSON.parse it.
   return JSON.stringify(data);
