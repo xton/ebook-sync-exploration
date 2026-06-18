@@ -9,3 +9,4 @@ config/pairings.json
 config/*.local.json
 .env
 .env.*
+.claude/
