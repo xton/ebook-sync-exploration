@@ -21,10 +21,10 @@ export const computeFraction = (
   res: Pick<StartReadingResponse, "startPosition" | "endPosition" | "lastPageReadData">,
 ): number | undefined => {
   const position = res.lastPageReadData?.position;
-  if (position === undefined) return undefined;
+  if (position == null) return undefined;
   const start = res.startPosition ?? 0;
   const end = res.endPosition;
-  if (end === undefined || end <= 0) return undefined;
+  if (end == null || end <= 0) return undefined;
   return clampFraction((start + position) / end);
 };
 
@@ -38,8 +38,8 @@ export const toProgress = (
   const syncTime = res.lastPageReadData?.syncTime;
   return {
     fraction,
-    ...(position !== undefined ? { position: String(position) } : {}),
-    updatedAt: syncTime !== undefined ? new Date(syncTime) : new Date(0),
+    ...(position != null ? { position: String(position) } : {}),
+    updatedAt: syncTime != null ? new Date(syncTime) : new Date(0),
   };
 };
 

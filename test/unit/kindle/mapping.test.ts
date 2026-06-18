@@ -58,6 +58,16 @@ describe("computeFraction", () => {
       computeFraction({ endPosition: 0, lastPageReadData: { position: 10 } }),
     ).toBeUndefined();
   });
+
+  it("returns undefined when the API returns nulls (e.g. CONTENT_UNSUPPORTED)", () => {
+    expect(
+      computeFraction({
+        startPosition: null,
+        endPosition: null,
+        lastPageReadData: null,
+      }),
+    ).toBeUndefined();
+  });
 });
 
 describe("toProgress", () => {
