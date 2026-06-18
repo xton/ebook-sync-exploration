@@ -32,8 +32,12 @@ function bufferToString(bytes: Buffer): string {
 }
 
 function decodeBody(data: unknown): string {
+  // Actual Node Buffer (CycleTLS returns this for compressed/binary bodies).
+  if (Buffer.isBuffer(data)) {
+    return bufferToString(data);
+  }
   if (typeof data === "string") {
-    // CycleTLS sometimes JSON-serialises a Buffer object into the string field.
+    // CycleTLS sometimes JSON-serialises a Buffer into the string field.
     // Detect '{"type":"Buffer","data":[...]}' and decode it recursively.
     if (data.startsWith('{"type":"Buffer"')) {
       let parsed: unknown;
@@ -46,11 +50,10 @@ function decodeBody(data: unknown): string {
     }
     return data;
   }
-  // Buffer-like object: { type: "Buffer", data: number[] }
+  // Buffer-like plain object: { type: "Buffer", data: number[] }
   if (
     data !== null &&
     typeof data === "object" &&
-    "type" in data &&
     (data as Record<string, unknown>)["type"] === "Buffer" &&
     Array.isArray((data as Record<string, unknown>)["data"])
   ) {
@@ -79,13 +82,6 @@ export class CycleTlsTransport implements HttpTransport {
       userAgent: req.headers["User-Agent"] ?? "",
       tlsClientIdentifier: "chrome_112",
     });
-    process.stderr.write(
-      `[DECODE] res keys=${Object.keys(res).join(",")} | typeof data=${typeof res.data}` +
-        (res.data && typeof res.data === "object"
-          ? ` | data keys=${Object.keys(res.data as object).join(",")} | data.type=${(res.data as Record<string, unknown>)["type"]}`
-          : ` | data preview=${String(res.data).slice(0, 40)}`) +
-        `\n`,
-    );
     const body = decodeBody(res.data);
     return { status: res.status, body };
   }

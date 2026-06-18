@@ -77,6 +77,17 @@ describe("CycleTlsTransport", () => {
     expect(res.status).toBe(403);
   });
 
+  it("decompresses gzip-encoded responses returned as a real Node Buffer", async () => {
+    const { gzipSync } = await import("node:zlib");
+    const payload = JSON.stringify({ itemsList: [] });
+    const compressed = gzipSync(Buffer.from(payload, "utf8"));
+    // CycleTLS hands back an actual Buffer instance for compressed bodies.
+    mockClient.get.mockResolvedValue({ status: 200, data: compressed });
+    const transport = new CycleTlsTransport();
+    const res = await transport.get({ url: "https://x.com", headers: {} });
+    expect(res.body).toBe(payload);
+  });
+
   it("decompresses gzip-encoded Buffer object responses", async () => {
     const { gzipSync } = await import("node:zlib"); // gzipSync produces output unzipSync can read
     const payload = JSON.stringify({ itemsList: [] });
