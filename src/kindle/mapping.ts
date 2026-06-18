@@ -32,13 +32,13 @@ export const computeFraction = (
 export const toProgress = (
   res: StartReadingResponse,
 ): Progress | undefined => {
-  const fraction = computeFraction(res);
-  if (fraction === undefined) return undefined;
   const position = res.lastPageReadData?.position;
+  if (position == null) return undefined;
+  const fraction = computeFraction(res);
   const syncTime = res.lastPageReadData?.syncTime;
   return {
-    fraction,
-    ...(position != null ? { position: String(position) } : {}),
+    ...(fraction !== undefined ? { fraction } : {}),
+    position: String(position),
     updatedAt: syncTime != null ? new Date(syncTime) : new Date(0),
   };
 };

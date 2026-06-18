@@ -95,6 +95,15 @@ describe("toProgress", () => {
   it("returns undefined when there is no progress", () => {
     expect(toProgress({ startPosition: 0, endPosition: 100 })).toBeUndefined();
   });
+
+  it("returns progress with position but no fraction when endPosition is missing", () => {
+    const progress = toProgress({
+      lastPageReadData: { position: 31493, syncTime: 1_718_500_000_000 },
+    });
+    expect(progress).toBeDefined();
+    expect(progress?.fraction).toBeUndefined();
+    expect(progress?.position).toBe("31493");
+  });
 });
 
 describe("toKindleBook", () => {

@@ -14,7 +14,10 @@ export const formatBookLine = (book: BookRef<string>): string => {
   const when = book.progress.updatedAt.getTime()
     ? book.progress.updatedAt.toISOString().slice(0, 10)
     : "unsynced";
-  return `  [${pct(book.progress.fraction).padStart(4)}] ${book.title} — ${authors} (${book.id}) @ ${when}`;
+  const prog = book.progress.fraction !== undefined
+    ? pct(book.progress.fraction).padStart(4)
+    : " pos";
+  return `  [${prog}] ${book.title} — ${authors} (${book.id}) @ ${when}`;
 };
 
 export const formatBookList = (books: readonly BookRef<string>[]): string =>
