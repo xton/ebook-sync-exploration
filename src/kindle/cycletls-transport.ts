@@ -79,9 +79,13 @@ export class CycleTlsTransport implements HttpTransport {
       userAgent: req.headers["User-Agent"] ?? "",
       tlsClientIdentifier: "chrome_112",
     });
-    if (typeof res.data === "string" && res.data.startsWith('{"type":"Buffer"')) {
-      process.stderr.write(`[DECODE] detected Buffer string, len=${res.data.length}, char0=${res.data.charCodeAt(0)}\n`);
-    }
+    process.stderr.write(
+      `[DECODE] res keys=${Object.keys(res).join(",")} | typeof data=${typeof res.data}` +
+        (res.data && typeof res.data === "object"
+          ? ` | data keys=${Object.keys(res.data as object).join(",")} | data.type=${(res.data as Record<string, unknown>)["type"]}`
+          : ` | data preview=${String(res.data).slice(0, 40)}`) +
+        `\n`,
+    );
     const body = decodeBody(res.data);
     return { status: res.status, body };
   }
