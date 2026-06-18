@@ -17,6 +17,29 @@ const initCycleTLS = (await import("cycletls")).default as unknown as (
 
 import type { HttpRequest, HttpResponse, HttpTransport } from "./transport.js";
 
+/**
+ * CycleTLS can return the response body as a string, a plain object (already
+ * parsed JSON), or a Node Buffer (when the response was binary / not decoded).
+ * Normalise all three to a UTF-8 string so callers always get text.
+ */
+function decodeBody(data: unknown): string {
+  if (typeof data === "string") return data;
+  // Buffer-like: { type: "Buffer", data: number[] }
+  if (
+    data !== null &&
+    typeof data === "object" &&
+    "type" in data &&
+    (data as Record<string, unknown>)["type"] === "Buffer" &&
+    Array.isArray((data as Record<string, unknown>)["data"])
+  ) {
+    return Buffer.from(
+      (data as { type: string; data: number[] }).data,
+    ).toString("utf8");
+  }
+  // Anything else (already-parsed object) — re-serialise so callers can JSON.parse it.
+  return JSON.stringify(data);
+}
+
 type CycleTLSClient = Awaited<ReturnType<typeof initCycleTLS>>;
 
 export class CycleTlsTransport implements HttpTransport {
@@ -36,8 +59,7 @@ export class CycleTlsTransport implements HttpTransport {
       userAgent: req.headers["User-Agent"] ?? "",
       tlsClientIdentifier: "chrome_112",
     });
-    const body =
-      typeof res.data === "string" ? res.data : JSON.stringify(res.data);
+    const body = decodeBody(res.data);
     return { status: res.status, body };
   }
 

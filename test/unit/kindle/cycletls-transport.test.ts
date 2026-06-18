@@ -67,6 +67,16 @@ describe("CycleTlsTransport", () => {
     expect(res.body).toBe('{"key":"value"}');
   });
 
+  it("decodes Buffer-shaped data to a UTF-8 string", async () => {
+    const message = "Host not in allowlist";
+    const bufferData = { type: "Buffer", data: Array.from(Buffer.from(message, "utf8")) };
+    mockClient.get.mockResolvedValue({ status: 403, data: bufferData });
+    const transport = new CycleTlsTransport();
+    const res = await transport.get({ url: "https://x.com", headers: {} });
+    expect(res.body).toBe(message);
+    expect(res.status).toBe(403);
+  });
+
   it("propagates non-200 status codes", async () => {
     mockClient.get.mockResolvedValue({ status: 403, data: "Forbidden" });
     const transport = new CycleTlsTransport();
