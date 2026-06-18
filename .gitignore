@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.log
+
+# Local secrets & state — never commit
+config/config.json
+config/pairings.json
+config/*.local.json
+.env
+.env.*
