@@ -79,7 +79,7 @@ export class CookieApiSource implements KindleSource {
     const res = await this.transport.get(req);
     if (this.opts.verbose) {
       process.stderr.write(
-        `[verbose] GET ${url} → ${res.status}\n${res.body.slice(0, 800)}\n\n`,
+        `[verbose] GET ${url} → ${res.status}\n${res.body.slice(0, 4000)}\n\n`,
       );
     }
     if (res.status !== 200) {
