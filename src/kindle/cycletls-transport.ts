@@ -6,6 +6,8 @@
  * transport uses CycleTLS to impersonate Chrome's TLS handshake locally — no
  * cookies or data leave the machine via a third party.
  */
+import { unzipSync } from "node:zlib";
+
 // CycleTLS is a CJS package; the callable initialiser is on .default at runtime.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const initCycleTLS = (await import("cycletls")).default as unknown as (
@@ -16,6 +18,50 @@ const initCycleTLS = (await import("cycletls")).default as unknown as (
 }>;
 
 import type { HttpRequest, HttpResponse, HttpTransport } from "./transport.js";
+
+/**
+ * CycleTLS can return the response body as a string, a plain object (already
+ * parsed JSON), or a Node Buffer (when the response is binary or gzip-compressed).
+ * Normalise all to a UTF-8 string so callers always get text.
+ */
+function bufferToString(bytes: Buffer): string {
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    return unzipSync(bytes).toString("utf8");
+  }
+  return bytes.toString("utf8");
+}
+
+function decodeBody(data: unknown): string {
+  // Actual Node Buffer (CycleTLS returns this for compressed/binary bodies).
+  if (Buffer.isBuffer(data)) {
+    return bufferToString(data);
+  }
+  if (typeof data === "string") {
+    // CycleTLS sometimes JSON-serialises a Buffer into the string field.
+    // Detect '{"type":"Buffer","data":[...]}' and decode it recursively.
+    if (data.startsWith('{"type":"Buffer"')) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(data);
+      } catch {
+        return data; // not valid JSON after all — treat as plain string
+      }
+      return decodeBody(parsed); // decompression errors propagate rather than silently falling back
+    }
+    return data;
+  }
+  // Buffer-like plain object: { type: "Buffer", data: number[] }
+  if (
+    data !== null &&
+    typeof data === "object" &&
+    (data as Record<string, unknown>)["type"] === "Buffer" &&
+    Array.isArray((data as Record<string, unknown>)["data"])
+  ) {
+    return bufferToString(Buffer.from((data as { type: string; data: number[] }).data));
+  }
+  // Anything else (already-parsed object) — re-serialise so callers can JSON.parse it.
+  return JSON.stringify(data);
+}
 
 type CycleTLSClient = Awaited<ReturnType<typeof initCycleTLS>>;
 
@@ -36,8 +82,7 @@ export class CycleTlsTransport implements HttpTransport {
       userAgent: req.headers["User-Agent"] ?? "",
       tlsClientIdentifier: "chrome_112",
     });
-    const body =
-      typeof res.data === "string" ? res.data : JSON.stringify(res.data);
+    const body = decodeBody(res.data);
     return { status: res.status, body };
   }
 

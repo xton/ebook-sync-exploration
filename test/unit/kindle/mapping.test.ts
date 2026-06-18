@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampFraction,
   computeFraction,
+  parseMetadataEndPosition,
   toKindleBook,
   toProgress,
 } from "../../../src/kindle/mapping.js";
@@ -58,6 +59,16 @@ describe("computeFraction", () => {
       computeFraction({ endPosition: 0, lastPageReadData: { position: 10 } }),
     ).toBeUndefined();
   });
+
+  it("returns undefined when the API returns nulls (e.g. CONTENT_UNSUPPORTED)", () => {
+    expect(
+      computeFraction({
+        startPosition: null,
+        endPosition: null,
+        lastPageReadData: null,
+      }),
+    ).toBeUndefined();
+  });
 });
 
 describe("toProgress", () => {
@@ -84,6 +95,33 @@ describe("toProgress", () => {
 
   it("returns undefined when there is no progress", () => {
     expect(toProgress({ startPosition: 0, endPosition: 100 })).toBeUndefined();
+  });
+
+  it("returns progress with position but no fraction when endPosition is missing", () => {
+    const progress = toProgress({
+      lastPageReadData: { position: 31493, syncTime: 1_718_500_000_000 },
+    });
+    expect(progress).toBeDefined();
+    expect(progress?.fraction).toBeUndefined();
+    expect(progress?.position).toBe("31493");
+  });
+});
+
+describe("parseMetadataEndPosition", () => {
+  it("extracts top-level endPosition from JSONP", () => {
+    const jsonp = `amznJsp({"endPosition":98765,"title":"Test Book"});`;
+    expect(parseMetadataEndPosition(jsonp)).toBe(98765);
+  });
+
+  it("sums spine lengths when endPosition is absent", () => {
+    const jsonp = `amznJsp({"spine":[{"length":10000},{"length":20000},{"length":5000}]});`;
+    expect(parseMetadataEndPosition(jsonp)).toBe(35000);
+  });
+
+  it("returns undefined for invalid input", () => {
+    expect(parseMetadataEndPosition("not json at all")).toBeUndefined();
+    expect(parseMetadataEndPosition("{}")).toBeUndefined();
+    expect(parseMetadataEndPosition("")).toBeUndefined();
   });
 });
 

@@ -13,6 +13,7 @@ export const ConfigSchema = z.object({
         ubidMain: z.string(),
         xMain: z.string(),
       }),
+      /** Optional — improves startReading accuracy. See `kindle setup`. */
       deviceSessionToken: z.string().optional(),
     })
     .optional(),

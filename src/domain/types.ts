@@ -28,7 +28,7 @@ export type Library = "kindle" | "kosync";
  * kept verbatim for round-tripping and display.
  */
 export interface Progress {
-  readonly fraction: number;
+  readonly fraction?: number;   // undefined when endPosition unknown
   readonly position?: string;
   readonly updatedAt: Date;
 }

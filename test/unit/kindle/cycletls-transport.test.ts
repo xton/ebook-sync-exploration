@@ -67,6 +67,50 @@ describe("CycleTlsTransport", () => {
     expect(res.body).toBe('{"key":"value"}');
   });
 
+  it("decodes Buffer-shaped data to a UTF-8 string", async () => {
+    const message = "Host not in allowlist";
+    const bufferData = { type: "Buffer", data: Array.from(Buffer.from(message, "utf8")) };
+    mockClient.get.mockResolvedValue({ status: 403, data: bufferData });
+    const transport = new CycleTlsTransport();
+    const res = await transport.get({ url: "https://x.com", headers: {} });
+    expect(res.body).toBe(message);
+    expect(res.status).toBe(403);
+  });
+
+  it("decompresses gzip-encoded responses returned as a real Node Buffer", async () => {
+    const { gzipSync } = await import("node:zlib");
+    const payload = JSON.stringify({ itemsList: [] });
+    const compressed = gzipSync(Buffer.from(payload, "utf8"));
+    // CycleTLS hands back an actual Buffer instance for compressed bodies.
+    mockClient.get.mockResolvedValue({ status: 200, data: compressed });
+    const transport = new CycleTlsTransport();
+    const res = await transport.get({ url: "https://x.com", headers: {} });
+    expect(res.body).toBe(payload);
+  });
+
+  it("decompresses gzip-encoded Buffer object responses", async () => {
+    const { gzipSync } = await import("node:zlib"); // gzipSync produces output unzipSync can read
+    const payload = JSON.stringify({ itemsList: [] });
+    const compressed = gzipSync(Buffer.from(payload, "utf8"));
+    const bufferData = { type: "Buffer", data: Array.from(compressed) };
+    mockClient.get.mockResolvedValue({ status: 200, data: bufferData });
+    const transport = new CycleTlsTransport();
+    const res = await transport.get({ url: "https://x.com", headers: {} });
+    expect(res.body).toBe(payload);
+  });
+
+  it("decompresses gzip-encoded Buffer responses serialised as JSON strings", async () => {
+    const { gzipSync } = await import("node:zlib"); // gzipSync produces output unzipSync can read
+    const payload = JSON.stringify({ itemsList: [] });
+    const compressed = gzipSync(Buffer.from(payload, "utf8"));
+    const bufferData = { type: "Buffer", data: Array.from(compressed) };
+    // CycleTLS sometimes returns the Buffer as a JSON string rather than an object.
+    mockClient.get.mockResolvedValue({ status: 200, data: JSON.stringify(bufferData) });
+    const transport = new CycleTlsTransport();
+    const res = await transport.get({ url: "https://x.com", headers: {} });
+    expect(res.body).toBe(payload);
+  });
+
   it("propagates non-200 status codes", async () => {
     mockClient.get.mockResolvedValue({ status: 403, data: "Forbidden" });
     const transport = new CycleTlsTransport();

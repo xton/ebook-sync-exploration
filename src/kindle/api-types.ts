@@ -33,18 +33,25 @@ export const LastPageReadDataSchema = z.object({
   /** Kindle internal position (byte-offset units), NOT percent or page. */
   position: z.number(),
   /** Sync timestamp; epoch milliseconds. */
-  syncTime: z.number().optional(),
-  deviceName: z.string().optional(),
+  syncTime: z.number().nullish(),
+  deviceName: z.string().nullish(),
 });
 export type LastPageReadData = z.infer<typeof LastPageReadDataSchema>;
 
-export const StartReadingResponseSchema = z.object({
-  /** First content position in the book. */
-  startPosition: z.number().optional(),
-  /** Last content position in the book. */
-  endPosition: z.number().optional(),
-  lastPageReadData: LastPageReadDataSchema.optional(),
-  /** "start reading location" indicator; kept for completeness. */
-  srl: z.number().optional(),
-});
+export const StartReadingResponseSchema = z
+  .object({
+    /** First content position in the book. */
+    startPosition: z.number().nullish(),
+    /** Last content position in the book. */
+    endPosition: z.number().nullish(),
+    /** Null for books with no synced position (e.g. CONTENT_UNSUPPORTED). */
+    lastPageReadData: LastPageReadDataSchema.nullish(),
+    /** "start reading location" indicator; kept for completeness. */
+    srl: z.number().nullish(),
+    /** URL to the JSONP metadata file containing spine/endPosition info. */
+    metadataUrl: z.string().nullish(),
+  })
+  // The endpoint returns many other fields (format metadata, restrictions, …)
+  // that we don't model; ignore them rather than failing.
+  .passthrough();
 export type StartReadingResponse = z.infer<typeof StartReadingResponseSchema>;

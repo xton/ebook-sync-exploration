@@ -34,4 +34,13 @@ describe("formatBookLine", () => {
     const line = formatBookLine(book({ authors: [] }));
     expect(line).toContain("Unknown author");
   });
+
+  it("shows ' pos' when fraction is undefined (position-only progress)", () => {
+    const line = formatBookLine(
+      book({ progress: { position: "31493", updatedAt: new Date("2024-06-16T00:00:00Z") } }),
+    );
+    expect(line).toContain(" pos");
+    expect(line).not.toContain("%");
+    expect(line).toContain("2024-06-16");
+  });
 });

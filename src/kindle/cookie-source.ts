@@ -5,16 +5,20 @@
  *   1. kindle-library/search (paginated) → owned books + ASINs
  *   2. startReading per ASIN → last-read position → domain Progress
  *
- * Auth is via browser session cookies plus an optional device session token,
- * carried on every request. The actual browser-impersonating I/O is delegated
- * to an injected `HttpTransport`.
+ * Optionally: if a deviceSessionToken is supplied (obtained manually from
+ * browser devtools — see `kindle setup`), it is sent as x-adp-session-token,
+ * which causes startReading to return full position data.
+ *
+ * Auth is via browser session cookies. The actual browser-impersonating I/O is
+ * delegated to an injected `HttpTransport`.
  */
+import { ZodError } from "zod";
 import type { KindleBook } from "../domain/types.js";
 import {
   LibrarySearchResponseSchema,
   StartReadingResponseSchema,
 } from "./api-types.js";
-import { toKindleBook } from "./mapping.js";
+import { parseMetadataEndPosition, toKindleBook } from "./mapping.js";
 import type { KindleSource } from "./source.js";
 import type { HttpRequest, HttpTransport } from "./transport.js";
 
@@ -35,8 +39,13 @@ export interface KindleCookies {
 
 export interface CookieSourceOptions {
   readonly cookies: KindleCookies;
-  /** Device session token from getDeviceToken, sent as x-adp-session-token. */
-  readonly deviceSessionToken?: string;
+  /**
+   * Optional device session token (x-adp-session-token).
+   * Obtained from browser devtools — see `kindle setup` instructions.
+   * Without it startReading may return no position data.
+   */
+  readonly deviceSessionToken?: string | undefined;
+  readonly verbose?: boolean | undefined;
 }
 
 const cookieHeader = (c: KindleCookies): string =>
@@ -68,10 +77,36 @@ export class CookieApiSource implements KindleSource {
   private async getJson<T>(url: string): Promise<T> {
     const req: HttpRequest = { url, headers: this.headers() };
     const res = await this.transport.get(req);
+    if (this.opts.verbose) {
+      process.stderr.write(
+        `[verbose] GET ${url} → ${res.status}\n${res.body.slice(0, 4000)}\n\n`,
+      );
+    }
     if (res.status !== 200) {
-      throw new Error(`Kindle API ${url} returned HTTP ${res.status}`);
+      throw new Error(
+        `Kindle API ${url} returned HTTP ${res.status}: ${res.body.slice(0, 200)}`,
+      );
     }
     return JSON.parse(res.body) as T;
+  }
+
+  private parseOrThrow<T>(
+    schema: { parse(v: unknown): T },
+    raw: unknown,
+    context: string,
+  ): T {
+    try {
+      return schema.parse(raw);
+    } catch (err) {
+      if (err instanceof ZodError) {
+        // Include a snippet of the raw value so the caller can diagnose shape mismatches.
+        const snippet = JSON.stringify(raw).slice(0, 300);
+        throw new Error(
+          `Unexpected response shape for ${context}. Raw: ${snippet}\nValidation: ${err.message}`,
+        );
+      }
+      throw err;
+    }
   }
 
   /** Walk the paginated library endpoint, returning all owned items. */
@@ -87,7 +122,11 @@ export class CookieApiSource implements KindleSource {
       });
       if (pageToken) params.set("paginationToken", pageToken);
       const raw = await this.getJson(`${BASE}/kindle-library/search?${params}`);
-      const page = LibrarySearchResponseSchema.parse(raw);
+      const page = this.parseOrThrow(
+        LibrarySearchResponseSchema,
+        raw,
+        "kindle-library/search",
+      );
       items.push(...page.itemsList);
       pageToken = page.paginationToken;
     } while (pageToken);
@@ -99,7 +138,22 @@ export class CookieApiSource implements KindleSource {
     const raw = await this.getJson(
       `${BASE}/service/mobile/reader/startReading?${params}`,
     );
-    return StartReadingResponseSchema.parse(raw);
+    return this.parseOrThrow(
+      StartReadingResponseSchema,
+      raw,
+      `startReading(${asin})`,
+    );
+  }
+
+  /**
+   * Fetch the JSONP metadata blob for a book and extract the end position.
+   * Uses plain `fetch` (not the CycleTLS transport) since the metadata URL
+   * is a CDN asset that doesn't require TLS fingerprinting.
+   */
+  async fetchMetadataEndPosition(metadataUrl: string): Promise<number | undefined> {
+    const res = await fetch(metadataUrl);
+    const text = await res.text();
+    return parseMetadataEndPosition(text);
   }
 
   async listBooks(): Promise<readonly KindleBook[]> {
@@ -108,10 +162,18 @@ export class CookieApiSource implements KindleSource {
       items.map(async (item) => {
         try {
           const reading = await this.fetchReading(item.asin);
+          // If endPosition is missing but metadataUrl present, try to fill it in
+          if ((reading.endPosition == null) && reading.metadataUrl) {
+            const endPosition = await this.fetchMetadataEndPosition(reading.metadataUrl).catch(() => undefined);
+            if (endPosition != null) {
+              return toKindleBook(item, { ...reading, endPosition });
+            }
+          }
           return toKindleBook(item, reading);
-        } catch {
-          // Progress lookup can fail per-book (samples, transient blocks);
-          // still surface the book without progress.
+        } catch (err) {
+          process.stderr.write(
+            `[warn] Could not fetch progress for ${item.asin} (${item.title}): ${String(err)}\n`,
+          );
           return toKindleBook(item);
         }
       }),
