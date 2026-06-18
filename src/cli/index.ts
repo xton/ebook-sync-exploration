@@ -4,6 +4,7 @@ import { DEFAULT_CONFIG_PATH, loadConfig } from "../config/config.js";
 import { CookieApiSource } from "../kindle/cookie-source.js";
 import { sampleFixtureSource } from "../kindle/fixture-source.js";
 import { CycleTlsTransport } from "../kindle/cycletls-transport.js";
+import { FetchTransport } from "../kindle/transport.js";
 import { ensureConfig } from "./setup.js";
 import { formatBookList } from "./format.js";
 
@@ -19,7 +20,8 @@ kindle
   .description("List Kindle books and reading progress")
   .option("--fixture", "Use offline sample data (no network/credentials)")
   .option("--verbose", "Print raw API responses to stderr for debugging")
-  .action(async (opts: { fixture?: boolean; verbose?: boolean }) => {
+  .option("--fetch", "Use Node built-in fetch instead of CycleTLS (no TLS impersonation)")
+  .action(async (opts: { fixture?: boolean; verbose?: boolean; fetch?: boolean }) => {
     if (opts.fixture) {
       const books = await sampleFixtureSource().listBooks();
       console.log(`Kindle library (${books.length} books):`);
@@ -36,7 +38,7 @@ kindle
       );
     }
 
-    const transport = new CycleTlsTransport();
+    const transport = opts.fetch ? new FetchTransport() : new CycleTlsTransport();
     const source = new CookieApiSource(transport, {
       cookies: config.kindle.cookies,
       ...(config.kindle.deviceSessionToken
@@ -50,7 +52,7 @@ kindle
       console.log(`Kindle library (${books.length} books):`);
       console.log(formatBookList(books));
     } finally {
-      await transport.close();
+      if ("close" in transport) await transport.close();
     }
   });
 
