@@ -78,7 +78,7 @@ describe("CycleTlsTransport", () => {
   });
 
   it("decompresses gzip-encoded Buffer object responses", async () => {
-    const { gzipSync } = await import("node:zlib");
+    const { gzipSync } = await import("node:zlib"); // gzipSync produces output unzipSync can read
     const payload = JSON.stringify({ itemsList: [] });
     const compressed = gzipSync(Buffer.from(payload, "utf8"));
     const bufferData = { type: "Buffer", data: Array.from(compressed) };
@@ -89,7 +89,7 @@ describe("CycleTlsTransport", () => {
   });
 
   it("decompresses gzip-encoded Buffer responses serialised as JSON strings", async () => {
-    const { gzipSync } = await import("node:zlib");
+    const { gzipSync } = await import("node:zlib"); // gzipSync produces output unzipSync can read
     const payload = JSON.stringify({ itemsList: [] });
     const compressed = gzipSync(Buffer.from(payload, "utf8"));
     const bufferData = { type: "Buffer", data: Array.from(compressed) };

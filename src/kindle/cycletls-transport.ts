@@ -6,7 +6,7 @@
  * transport uses CycleTLS to impersonate Chrome's TLS handshake locally — no
  * cookies or data leave the machine via a third party.
  */
-import { gunzipSync } from "node:zlib";
+import { unzipSync } from "node:zlib";
 
 // CycleTLS is a CJS package; the callable initialiser is on .default at runtime.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -26,7 +26,7 @@ import type { HttpRequest, HttpResponse, HttpTransport } from "./transport.js";
  */
 function bufferToString(bytes: Buffer): string {
   if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
-    return gunzipSync(bytes).toString("utf8");
+    return unzipSync(bytes).toString("utf8");
   }
   return bytes.toString("utf8");
 }
@@ -36,9 +36,13 @@ function decodeBody(data: unknown): string {
     // CycleTLS sometimes JSON-serialises a Buffer object into the string field.
     // Detect '{"type":"Buffer","data":[...]}' and decode it recursively.
     if (data.startsWith('{"type":"Buffer"')) {
+      let parsed: unknown;
       try {
-        return decodeBody(JSON.parse(data));
-      } catch { /* fall through — treat as plain string */ }
+        parsed = JSON.parse(data);
+      } catch {
+        return data; // not valid JSON after all — treat as plain string
+      }
+      return decodeBody(parsed); // decompression errors propagate rather than silently falling back
     }
     return data;
   }
