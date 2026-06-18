@@ -24,9 +24,25 @@ import type { HttpRequest, HttpResponse, HttpTransport } from "./transport.js";
  * parsed JSON), or a Node Buffer (when the response is binary or gzip-compressed).
  * Normalise all to a UTF-8 string so callers always get text.
  */
+function bufferToString(bytes: Buffer): string {
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    return gunzipSync(bytes).toString("utf8");
+  }
+  return bytes.toString("utf8");
+}
+
 function decodeBody(data: unknown): string {
-  if (typeof data === "string") return data;
-  // Buffer-like: { type: "Buffer", data: number[] }
+  if (typeof data === "string") {
+    // CycleTLS sometimes JSON-serialises a Buffer object into the string field.
+    // Detect '{"type":"Buffer","data":[...]}' and decode it recursively.
+    if (data.startsWith('{"type":"Buffer"')) {
+      try {
+        return decodeBody(JSON.parse(data));
+      } catch { /* fall through — treat as plain string */ }
+    }
+    return data;
+  }
+  // Buffer-like object: { type: "Buffer", data: number[] }
   if (
     data !== null &&
     typeof data === "object" &&
@@ -34,12 +50,7 @@ function decodeBody(data: unknown): string {
     (data as Record<string, unknown>)["type"] === "Buffer" &&
     Array.isArray((data as Record<string, unknown>)["data"])
   ) {
-    const bytes = Buffer.from((data as { type: string; data: number[] }).data);
-    // Decompress gzip responses (magic bytes 1f 8b).
-    if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
-      return gunzipSync(bytes).toString("utf8");
-    }
-    return bytes.toString("utf8");
+    return bufferToString(Buffer.from((data as { type: string; data: number[] }).data));
   }
   // Anything else (already-parsed object) — re-serialise so callers can JSON.parse it.
   return JSON.stringify(data);
