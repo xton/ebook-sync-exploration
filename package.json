@@ -1,0 +1,33 @@
+{
+  "name": "ebook-sync-bridge",
+  "version": "0.1.0",
+  "description": "Bridge reading progress between Kindle and KOSync (KOReader/Crosspoint)",
+  "type": "module",
+  "bin": {
+    "ebook-sync": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli/index.ts",
+    "start": "node dist/cli/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:functional": "vitest run --config vitest.functional.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --ext .ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.1.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
