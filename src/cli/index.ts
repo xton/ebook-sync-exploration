@@ -39,6 +39,9 @@ kindle
     const transport = new CycleTlsTransport();
     const source = new CookieApiSource(transport, {
       cookies: config.kindle.cookies,
+      ...(config.kindle.deviceSessionToken
+        ? { deviceSessionToken: config.kindle.deviceSessionToken }
+        : {}),
       verbose: opts.verbose,
     });
 

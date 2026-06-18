@@ -9,8 +9,6 @@ const COOKIES = {
   xMain: "xm",
 };
 
-const DEVICE_TOKEN_RESPONSE = JSON.stringify({ deviceSessionToken: "tok-abc" });
-
 const LIBRARY_RESPONSE = JSON.stringify({
   itemsList: [
     { asin: "B001", title: "Book One", authors: ["Author, A"] },
@@ -25,9 +23,8 @@ const startReadingResponse = (position: number) =>
     lastPageReadData: { position, syncTime: 1_718_500_000_000, deviceName: "Kindle" },
   });
 
-/** Build a transport mock whose get() resolves based on URL patterns. */
 function makeTransport(
-  overrides: Partial<Record<"token" | "library" | "reading", string | Error>> = {},
+  overrides: Partial<Record<"library" | "reading", string | Error>> = {},
 ): HttpTransport & { calls: HttpRequest[] } {
   const calls: HttpRequest[] = [];
   return {
@@ -35,11 +32,6 @@ function makeTransport(
     get: vi.fn().mockImplementation(async (req: HttpRequest): Promise<HttpResponse> => {
       calls.push(req);
       const url = req.url;
-      if (url.includes("getDeviceToken")) {
-        const v = overrides.token ?? DEVICE_TOKEN_RESPONSE;
-        if (v instanceof Error) throw v;
-        return { status: 200, body: v };
-      }
       if (url.includes("kindle-library")) {
         const v = overrides.library ?? LIBRARY_RESPONSE;
         if (v instanceof Error) throw v;
@@ -61,22 +53,6 @@ describe("CookieApiSource", () => {
     vi.spyOn(process.stderr, "write").mockReturnValue(true);
   });
 
-  it("fetches device token before listing books", async () => {
-    const transport = makeTransport();
-    const source = new CookieApiSource(transport, { cookies: COOKIES });
-    await source.listBooks();
-    const tokenCall = transport.calls.find((c) => c.url.includes("getDeviceToken"));
-    expect(tokenCall).toBeDefined();
-  });
-
-  it("sends x-adp-session-token on subsequent requests after getDeviceToken", async () => {
-    const transport = makeTransport();
-    const source = new CookieApiSource(transport, { cookies: COOKIES });
-    await source.listBooks();
-    const libraryCall = transport.calls.find((c) => c.url.includes("kindle-library"));
-    expect(libraryCall?.headers["x-adp-session-token"]).toBe("tok-abc");
-  });
-
   it("includes session cookies on every request", async () => {
     const transport = makeTransport();
     const source = new CookieApiSource(transport, { cookies: COOKIES });
@@ -84,6 +60,35 @@ describe("CookieApiSource", () => {
     for (const call of transport.calls) {
       expect(call.headers["Cookie"]).toContain("at-main=at");
       expect(call.headers["Cookie"]).toContain("session-id=sess");
+    }
+  });
+
+  it("does NOT call getDeviceToken automatically", async () => {
+    const transport = makeTransport();
+    const source = new CookieApiSource(transport, { cookies: COOKIES });
+    await source.listBooks();
+    const tokenCall = transport.calls.find((c) => c.url.includes("getDeviceToken"));
+    expect(tokenCall).toBeUndefined();
+  });
+
+  it("sends x-adp-session-token when deviceSessionToken is supplied", async () => {
+    const transport = makeTransport();
+    const source = new CookieApiSource(transport, {
+      cookies: COOKIES,
+      deviceSessionToken: "tok-abc",
+    });
+    await source.listBooks();
+    for (const call of transport.calls) {
+      expect(call.headers["x-adp-session-token"]).toBe("tok-abc");
+    }
+  });
+
+  it("omits x-adp-session-token when no deviceSessionToken is supplied", async () => {
+    const transport = makeTransport();
+    const source = new CookieApiSource(transport, { cookies: COOKIES });
+    await source.listBooks();
+    for (const call of transport.calls) {
+      expect(call.headers["x-adp-session-token"]).toBeUndefined();
     }
   });
 
@@ -107,24 +112,10 @@ describe("CookieApiSource", () => {
     );
   });
 
-  it("continues without device token when getDeviceToken fails, logs a warning", async () => {
-    const transport = makeTransport({ token: new Error("network error") });
+  it("throws with a diagnostic snippet when the library response has unexpected shape", async () => {
+    const transport = makeTransport({ library: JSON.stringify({ wrong: "shape" }) });
     const source = new CookieApiSource(transport, { cookies: COOKIES });
-    // Should not throw; device token is non-fatal
-    const books = await source.listBooks();
-    expect(books).toHaveLength(2);
-    expect(process.stderr.write).toHaveBeenCalledWith(
-      expect.stringContaining("[warn] Could not obtain device session token"),
-    );
-  });
-
-  it("only calls getDeviceToken once across multiple listBooks calls", async () => {
-    const transport = makeTransport();
-    const source = new CookieApiSource(transport, { cookies: COOKIES });
-    await source.listBooks();
-    await source.listBooks();
-    const tokenCalls = transport.calls.filter((c) => c.url.includes("getDeviceToken"));
-    expect(tokenCalls).toHaveLength(1);
+    await expect(source.listBooks()).rejects.toThrow("kindle-library/search");
   });
 
   it("paginates the library using paginationToken", async () => {
@@ -140,7 +131,6 @@ describe("CookieApiSource", () => {
       calls: [],
       get: vi.fn().mockImplementation(async (req: HttpRequest): Promise<HttpResponse> => {
         transport.calls.push(req);
-        if (req.url.includes("getDeviceToken")) return { status: 200, body: DEVICE_TOKEN_RESPONSE };
         if (req.url.includes("kindle-library")) {
           return { status: 200, body: libraryCalls++ === 0 ? page1 : page2 };
         }

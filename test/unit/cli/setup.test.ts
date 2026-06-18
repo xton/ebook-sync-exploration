@@ -21,7 +21,8 @@ const { runSetupWizard, ensureConfig } = await import(
   "../../../src/cli/setup.js"
 );
 
-const COOKIE_ANSWERS = ["at-value", "sess-value", "ubid-value", "xmain-value"];
+// 5 answers: 4 cookies + optional deviceSessionToken (empty = skip)
+const COOKIE_ANSWERS = ["at-value", "sess-value", "ubid-value", "xmain-value", ""];
 
 describe("runSetupWizard", () => {
   beforeEach(() => {
@@ -32,9 +33,9 @@ describe("runSetupWizard", () => {
     );
   });
 
-  it("prompts for all four cookies", async () => {
+  it("prompts for all four cookies plus optional device token", async () => {
     await runSetupWizard("config/config.json");
-    expect(mockQuestion).toHaveBeenCalledTimes(4);
+    expect(mockQuestion).toHaveBeenCalledTimes(5);
   });
 
   it("writes config.json with the collected cookies", async () => {
@@ -71,6 +72,24 @@ describe("runSetupWizard", () => {
   it("returns a Config object with the collected values", async () => {
     const config = await runSetupWizard("config/config.json");
     expect(config.kindle?.cookies.atMain).toBe("at-value");
+  });
+
+  it("omits deviceSessionToken when the user leaves it blank", async () => {
+    await runSetupWizard("config/config.json");
+    const [, content] = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0] as [string, string, string];
+    const parsed = JSON.parse(content) as { kindle: Record<string, unknown> };
+    expect(parsed.kindle["deviceSessionToken"]).toBeUndefined();
+  });
+
+  it("saves deviceSessionToken when the user provides one", async () => {
+    mockQuestion.mockReset();
+    let call = 0;
+    const answers = ["at-value", "sess-value", "ubid-value", "xmain-value", "tok-xyz"];
+    mockQuestion.mockImplementation(() => Promise.resolve(answers[call++] ?? ""));
+    await runSetupWizard("config/config.json");
+    const [, content] = (writeFile as ReturnType<typeof vi.fn>).mock.calls[0] as [string, string, string];
+    const parsed = JSON.parse(content) as { kindle: Record<string, unknown> };
+    expect(parsed.kindle["deviceSessionToken"]).toBe("tok-xyz");
   });
 
   it("closes the readline interface", async () => {

@@ -2,16 +2,19 @@
  * Live KindleSource backed by the Cloud Reader web API.
  *
  * Flow (see docs/decision-log.md):
- *   1. getDeviceToken → device session token (sent as x-adp-session-token)
- *   2. kindle-library/search (paginated) → owned books + ASINs
- *   3. startReading per ASIN → last-read position → domain Progress
+ *   1. kindle-library/search (paginated) → owned books + ASINs
+ *   2. startReading per ASIN → last-read position → domain Progress
+ *
+ * Optionally: if a deviceSessionToken is supplied (obtained manually from
+ * browser devtools — see `kindle setup`), it is sent as x-adp-session-token,
+ * which causes startReading to return full position data.
  *
  * Auth is via browser session cookies. The actual browser-impersonating I/O is
  * delegated to an injected `HttpTransport`.
  */
+import { ZodError } from "zod";
 import type { KindleBook } from "../domain/types.js";
 import {
-  DeviceTokenResponseSchema,
   LibrarySearchResponseSchema,
   StartReadingResponseSchema,
 } from "./api-types.js";
@@ -36,6 +39,12 @@ export interface KindleCookies {
 
 export interface CookieSourceOptions {
   readonly cookies: KindleCookies;
+  /**
+   * Optional device session token (x-adp-session-token).
+   * Obtained from browser devtools — see `kindle setup` instructions.
+   * Without it startReading may return no position data.
+   */
+  readonly deviceSessionToken?: string | undefined;
   readonly verbose?: boolean | undefined;
 }
 
@@ -48,25 +57,20 @@ const cookieHeader = (c: KindleCookies): string =>
   ].join("; ");
 
 export class CookieApiSource implements KindleSource {
-  private deviceSessionToken: string | undefined;
-
   constructor(
     private readonly transport: HttpTransport,
     private readonly opts: CookieSourceOptions,
   ) {}
 
-  private headers(extra?: Record<string, string>): Record<string, string> {
-    const { cookies } = this.opts;
+  private headers(): Record<string, string> {
+    const { cookies, deviceSessionToken } = this.opts;
     return {
       Cookie: cookieHeader(cookies),
       Accept: "application/json",
       "Accept-Language": "en-US,en;q=0.9",
       "User-Agent": USER_AGENT,
       "x-amzn-sessionid": cookies.sessionId,
-      ...(this.deviceSessionToken
-        ? { "x-adp-session-token": this.deviceSessionToken }
-        : {}),
-      ...extra,
+      ...(deviceSessionToken ? { "x-adp-session-token": deviceSessionToken } : {}),
     };
   }
 
@@ -74,38 +78,34 @@ export class CookieApiSource implements KindleSource {
     const req: HttpRequest = { url, headers: this.headers() };
     const res = await this.transport.get(req);
     if (this.opts.verbose) {
-      process.stderr.write(`[verbose] GET ${url} → ${res.status}\n${res.body.slice(0, 500)}\n\n`);
+      process.stderr.write(
+        `[verbose] GET ${url} → ${res.status}\n${res.body.slice(0, 800)}\n\n`,
+      );
     }
     if (res.status !== 200) {
-      throw new Error(`Kindle API ${url} returned HTTP ${res.status}: ${res.body.slice(0, 200)}`);
+      throw new Error(
+        `Kindle API ${url} returned HTTP ${res.status}: ${res.body.slice(0, 200)}`,
+      );
     }
     return JSON.parse(res.body) as T;
   }
 
-  /**
-   * Obtain a device session token from the Cloud Reader registration endpoint.
-   * This is required for startReading to return reading position data.
-   * The token is cached for the lifetime of this instance.
-   */
-  private async ensureDeviceToken(): Promise<void> {
-    if (this.deviceSessionToken) return;
-    // Use the session-id as both serialNumber and deviceType (standard practice
-    // observed in open-source Cloud Reader clients).
-    const params = new URLSearchParams({
-      serialNumber: this.opts.cookies.sessionId,
-      deviceType: this.opts.cookies.sessionId,
-    });
+  private parseOrThrow<T>(
+    schema: { parse(v: unknown): T },
+    raw: unknown,
+    context: string,
+  ): T {
     try {
-      const raw = await this.getJson(
-        `${BASE}/service/web/register/getDeviceToken?${params}`,
-      );
-      const parsed = DeviceTokenResponseSchema.parse(raw);
-      this.deviceSessionToken = parsed.deviceSessionToken;
+      return schema.parse(raw);
     } catch (err) {
-      // Non-fatal: startReading may still return partial data without the token.
-      process.stderr.write(
-        `[warn] Could not obtain device session token: ${String(err)}\n`,
-      );
+      if (err instanceof ZodError) {
+        // Include a snippet of the raw value so the caller can diagnose shape mismatches.
+        const snippet = JSON.stringify(raw).slice(0, 300);
+        throw new Error(
+          `Unexpected response shape for ${context}. Raw: ${snippet}\nValidation: ${err.message}`,
+        );
+      }
+      throw err;
     }
   }
 
@@ -122,7 +122,11 @@ export class CookieApiSource implements KindleSource {
       });
       if (pageToken) params.set("paginationToken", pageToken);
       const raw = await this.getJson(`${BASE}/kindle-library/search?${params}`);
-      const page = LibrarySearchResponseSchema.parse(raw);
+      const page = this.parseOrThrow(
+        LibrarySearchResponseSchema,
+        raw,
+        "kindle-library/search",
+      );
       items.push(...page.itemsList);
       pageToken = page.paginationToken;
     } while (pageToken);
@@ -134,11 +138,14 @@ export class CookieApiSource implements KindleSource {
     const raw = await this.getJson(
       `${BASE}/service/mobile/reader/startReading?${params}`,
     );
-    return StartReadingResponseSchema.parse(raw);
+    return this.parseOrThrow(
+      StartReadingResponseSchema,
+      raw,
+      `startReading(${asin})`,
+    );
   }
 
   async listBooks(): Promise<readonly KindleBook[]> {
-    await this.ensureDeviceToken();
     const items = await this.fetchLibrary();
     const books = await Promise.all(
       items.map(async (item) => {
