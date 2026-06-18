@@ -13,7 +13,6 @@ export const ConfigSchema = z.object({
         ubidMain: z.string(),
         xMain: z.string(),
       }),
-      deviceSessionToken: z.string().optional(),
     })
     .optional(),
 });

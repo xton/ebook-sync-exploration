@@ -38,6 +38,15 @@ export const LastPageReadDataSchema = z.object({
 });
 export type LastPageReadData = z.infer<typeof LastPageReadDataSchema>;
 
+/** Response from getDeviceToken — provides the x-adp-session-token. */
+export const DeviceTokenResponseSchema = z.object({
+  deviceSessionToken: z.string(),
+  clientHashId: z.string().optional(),
+  deviceName: z.string().optional(),
+  eid: z.string().optional(),
+});
+export type DeviceTokenResponse = z.infer<typeof DeviceTokenResponseSchema>;
+
 export const StartReadingResponseSchema = z.object({
   /** First content position in the book. */
   startPosition: z.number().optional(),
