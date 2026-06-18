@@ -9,5 +9,6 @@ export default defineConfig({
   test: {
     include: ["test/functional/**/*.test.ts"],
     environment: "node",
+    passWithNoTests: true,
   },
 });
