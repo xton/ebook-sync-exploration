@@ -8,6 +8,10 @@
  * user-confirmed `Pairing`.
  */
 
+/** Clamp a number into the inclusive [0, 1] range; non-finite → 0. */
+export const clampFraction = (n: number): number =>
+  Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0;
+
 /** Branded string types prevent accidentally mixing identifier kinds. */
 export type Brand<T, B> = T & { readonly __brand: B };
 
