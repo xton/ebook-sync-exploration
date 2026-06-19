@@ -2,6 +2,37 @@
 
 Append-only. Newest first.
 
+## 2026-06-19 — `at-main` token refresh: understood, deferred (open question)
+Captured so it isn't lost; **no implementation yet.** Observation: the `at-main`
+cookie is a short-lived access token (value prefix `Atza|…`); once it lapses,
+`read.amazon.com` 302-redirects to `…/ap/signin?…openid.mode=checkid_setup&
+openid.pape.max_auth_age=1209600…` — i.e. that redirect *is* the browser's silent
+re-auth handshake. So progress reads are gated on token freshness (≈1h), forcing
+a periodic server check-in. There are two minting systems behind it:
+- **Web "remember-me" cookies:** long-lived `ubid-main` + `x-main` silently mint a
+  fresh `at-main` (via the OpenID `checkid_setup` redirect) within `max_auth_age`,
+  no password prompt. A browser completes this invisibly; our bare `fetch` only
+  sees the 302.
+- **Device refresh token:** the Kindle-app path — register a device (`/auth/register`,
+  FIRS) for a long-lived `Atnr|…` refresh token, then mint `Atza|…` access tokens
+  via `api.amazon.com/auth/token` (`grant_type=refresh_token`). (Config already
+  carries an ADP `deviceSessionToken`, i.e. the device-auth family.)
+
+Two routes to self-refresh, both out of current scope:
+- **A — replicate the cookie re-auth.** Follow the `checkid_setup` redirect with the
+  full cookie jar, capture the new `at-main` from `Set-Cookie`. Brittle (needs more
+  cookies than we model: `sess-at-main`, `session-token`, …; fights anti-bot). Most
+  reliable as a **logged-in Playwright session** that refreshes for free — fits the
+  existing Playwright fallback seam.
+- **B — device registration + token refresh.** Durable headless ~yearly credential
+  that self-refreshes. This is the **same machinery deferred for Kindle write-back**
+  (register → FIRS → RSA-signed requests), so it doubles as the `KindleWriter`
+  foundation (Checkpoint 5) — a real milestone, not a quick add.
+
+Note: prefixes/endpoints are inferred from observed behavior + standard Amazon
+auth, not verified end-to-end here. Next step when picked up: spike A (detect
+302→signin and re-mint) or scope B (device-auth design doc).
+
 ## 2026-06-19 — Fetch is now the default transport; CycleTLS is opt-in fallback
 After verifying `--fetch` works against `read.amazon.com` not only in the
 container but also on a direct laptop connection (no fingerprint challenge
