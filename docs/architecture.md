@@ -15,9 +15,9 @@ src/
   kindle/    KindleSource interface + implementations:
                - CookieApiSource (Cloud Reader web API; the real progress source)
                - FixtureSource   (canned data for demos/tests, no network)
-             Transport is abstracted (HttpTransport) so the impersonation
-             strategy is swappable: CycleTlsTransport (local TLS-impersonation,
-             default) → PlaywrightTransport (local headless browser, fallback).
+             Transport is abstracted (HttpTransport) and swappable:
+             FetchTransport (default) → CycleTlsTransport (opt-in TLS
+             impersonation for fingerprint-challenged direct connections).
   kosync/    KOSync REST client (read + write progress).
   pairing/   Fuzzy matching (title/author) + pairing persistence.
   sync/      Bidirectional sync engine; applies conflict resolution.
@@ -38,14 +38,12 @@ src/
   `x-main`); stored in `config/config.json` (gitignored). Cookies last ~1 year.
 - A device token is obtained via `getDeviceToken` and sent as
   `x-adp-session-token`.
-- **TLS fingerprinting:** requests go through a local impersonating transport
-  (cycletls) by default; Playwright fallback if challenged. Cookies never leave
-  the user's machine.
-- **Transport override:** `FetchTransport` (Node's built-in `fetch`) can be
-  selected with `--fetch` or `EBOOK_SYNC_TRANSPORT=fetch`. This is the right
-  choice where outbound TLS is re-originated by an egress proxy (Amazon sees the
-  proxy fingerprint, not ours) and CycleTLS's Go worker can't reach the network —
-  e.g. the hosted container. Selection lives in `kindle/transport-factory.ts`.
+- **Transport:** `FetchTransport` (Node's built-in `fetch`) is the default —
+  verified against read.amazon.com in the container (egress proxy re-originates
+  TLS) and on a direct connection. `CycleTlsTransport` (browser TLS impersonation)
+  is an opt-in fallback (`--cycletls` / `EBOOK_SYNC_TRANSPORT=cycletls`) for
+  direct connections that Amazon fingerprint-challenges. Cookies never leave the
+  user's machine. Selection lives in `kindle/transport-factory.ts`.
 
 ## Sync direction & write-back
 - MVP syncs **Kindle → KOSync** only.

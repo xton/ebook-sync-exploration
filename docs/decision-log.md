@@ -2,6 +2,18 @@
 
 Append-only. Newest first.
 
+## 2026-06-19 — Fetch is now the default transport; CycleTLS is opt-in fallback
+After verifying `--fetch` works against `read.amazon.com` not only in the
+container but also on a direct laptop connection (no fingerprint challenge
+observed with valid cookies), we flipped the default: `FetchTransport` is now
+the default and CycleTLS is opt-in via `--cycletls` / `EBOOK_SYNC_TRANSPORT=
+cycletls`. Rationale: fetch has no native dependency, spawns no worker, and works
+in every environment we've tested; CycleTLS is heavy and can't traverse the
+container proxy. We keep CycleTLS rather than deleting it because Amazon's
+fingerprint blocking is documented and could resurface on other networks — it's
+a cheap, behind-the-seam insurance policy. **Refines** the entry below (which
+made fetch an environment-specific override); fetch is now the baseline.
+
 ## 2026-06-19 — Container transport: fetch override behind env var
 Verified the live Cloud Reader path end-to-end from the hosted container.
 Findings: (1) once `*.amazon.com` is in the egress allowlist, Node's plain

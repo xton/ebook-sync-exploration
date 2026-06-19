@@ -7,12 +7,22 @@ import {
 import { FetchTransport } from "../../../src/kindle/transport.js";
 
 describe("resolveTransportKind", () => {
-  it("defaults to cycletls with no flag or env", () => {
-    expect(resolveTransportKind({}, {})).toBe("cycletls");
+  it("defaults to fetch with no flag or env", () => {
+    expect(resolveTransportKind({}, {})).toBe("fetch");
+  });
+
+  it("returns cycletls when --cycletls flag is set", () => {
+    expect(resolveTransportKind({ cycletls: true }, {})).toBe("cycletls");
   });
 
   it("returns fetch when --fetch flag is set", () => {
     expect(resolveTransportKind({ fetch: true }, {})).toBe("fetch");
+  });
+
+  it("honours EBOOK_SYNC_TRANSPORT=cycletls", () => {
+    expect(resolveTransportKind({}, { [TRANSPORT_ENV_VAR]: "cycletls" })).toBe(
+      "cycletls",
+    );
   });
 
   it("honours EBOOK_SYNC_TRANSPORT=fetch", () => {
@@ -21,25 +31,25 @@ describe("resolveTransportKind", () => {
     );
   });
 
-  it("honours EBOOK_SYNC_TRANSPORT=cycletls", () => {
-    expect(
-      resolveTransportKind({ fetch: false }, { [TRANSPORT_ENV_VAR]: "cycletls" }),
-    ).toBe("cycletls");
-  });
-
   it("is case-insensitive and trims whitespace in the env var", () => {
-    expect(resolveTransportKind({}, { [TRANSPORT_ENV_VAR]: "  FETCH  " })).toBe(
-      "fetch",
-    );
-  });
-
-  it("ignores unrecognised env values and falls back to default", () => {
-    expect(resolveTransportKind({}, { [TRANSPORT_ENV_VAR]: "curl" })).toBe(
+    expect(resolveTransportKind({}, { [TRANSPORT_ENV_VAR]: "  CYCLETLS  " })).toBe(
       "cycletls",
     );
   });
 
-  it("flag takes precedence over the env var", () => {
+  it("ignores unrecognised env values and falls back to the fetch default", () => {
+    expect(resolveTransportKind({}, { [TRANSPORT_ENV_VAR]: "curl" })).toBe(
+      "fetch",
+    );
+  });
+
+  it("--cycletls flag overrides EBOOK_SYNC_TRANSPORT=fetch", () => {
+    expect(
+      resolveTransportKind({ cycletls: true }, { [TRANSPORT_ENV_VAR]: "fetch" }),
+    ).toBe("cycletls");
+  });
+
+  it("--fetch flag overrides EBOOK_SYNC_TRANSPORT=cycletls", () => {
     expect(
       resolveTransportKind({ fetch: true }, { [TRANSPORT_ENV_VAR]: "cycletls" }),
     ).toBe("fetch");

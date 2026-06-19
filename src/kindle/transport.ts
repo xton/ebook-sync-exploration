@@ -1,10 +1,9 @@
 /**
  * HTTP transport abstraction for the Cloud Reader API.
  *
- * Amazon blocks non-browser TLS fingerprints, so the concrete transport must
- * impersonate a real browser. The interface is intentionally tiny so we can
- * swap strategies (decision log): CycleTlsTransport (local TLS impersonation,
- * default) → PlaywrightTransport (local headless browser, fallback).
+ * The interface is intentionally tiny so we can swap strategies (decision log):
+ * FetchTransport (Node's built-in fetch, default) → CycleTlsTransport (local TLS
+ * impersonation, opt-in fallback for connections Amazon fingerprint-challenges).
  */
 export interface HttpResponse {
   readonly status: number;
@@ -21,10 +20,10 @@ export interface HttpTransport {
 }
 
 /**
- * Baseline transport using Node's built-in fetch. Simplest possible impl and
- * useful for wiring/tests, but Amazon will likely challenge it due to TLS
- * fingerprinting — use only to validate the pipeline. Real runs should use a
- * TLS-impersonating transport (see roadmap Checkpoint 1 follow-up).
+ * Default transport using Node's built-in fetch. Proven against read.amazon.com
+ * both behind the container's TLS-re-originating egress proxy and on a direct
+ * connection. If a direct connection is ever fingerprint-challenged, fall back
+ * to the CycleTLS transport (`--cycletls` / `EBOOK_SYNC_TRANSPORT=cycletls`).
  */
 export class FetchTransport implements HttpTransport {
   async get(req: HttpRequest): Promise<HttpResponse> {

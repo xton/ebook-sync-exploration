@@ -13,11 +13,16 @@
 - `getDeviceToken` support in the setup wizard (sent as `x-adp-session-token`)
   so `startReading` returns position data.
 - `--verbose` flag to dump raw API responses to stderr for debugging.
-- Transport selection: `--fetch` flag and `EBOOK_SYNC_TRANSPORT` env var choose
-  Node's built-in fetch over CycleTLS (for proxied/container environments where
-  CycleTLS can't run); logic lives in `kindle/transport-factory.ts`.
+- Transport selection (`kindle/transport-factory.ts`): `EBOOK_SYNC_TRANSPORT`
+  env var plus `--fetch` / `--cycletls` flags.
 
 ### Changed
+- **`FetchTransport` is now the default transport;** CycleTLS is an opt-in
+  fallback (`--cycletls` / `EBOOK_SYNC_TRANSPORT=cycletls`) for direct
+  connections that Amazon fingerprint-challenges. Fetch was verified against
+  read.amazon.com both in the container (egress proxy re-originates TLS) and on
+  a direct laptop connection, and avoids CycleTLS's native Go worker (which also
+  can't traverse the container's proxy).
 - `kindle list` now fetches per-book progress with **bounded concurrency** (6 at
   a time) and **retries transient throttling** (HTTP 429/5xx) with exponential
   backoff. Firing all `startReading` requests at once made Amazon shed load with
