@@ -2,6 +2,21 @@
 
 Append-only. Newest first.
 
+## 2026-06-19 — Container transport: fetch override behind env var
+Verified the live Cloud Reader path end-to-end from the hosted container.
+Findings: (1) once `*.amazon.com` is in the egress allowlist, Node's plain
+`fetch` reaches `read.amazon.com` and is **not** TLS-fingerprint-challenged — the
+egress proxy terminates and re-originates TLS, so Amazon sees the proxy's
+fingerprint, not ours (a clean `kindle list --fetch` returned the full 222-book
+library); (2) CycleTLS's Go worker can't traverse the egress proxy and hangs.
+We therefore let the environment select `FetchTransport` via `--fetch` or
+`EBOOK_SYNC_TRANSPORT=fetch`, with CycleTLS remaining the documented default for
+normal machines (where direct `fetch` *is* fingerprinted). This **does not
+supersede** the TLS-impersonation decision below; it's an environment-specific
+override. (Note: live runs are also gated on credential freshness — the
+`at-main` cookie is a short-lived `Atza|…` OAuth token that 302-redirects to
+sign-in once it lapses; unrelated to transport choice.)
+
 ## 2026-06-18 — Kindle progress source: Cloud Reader web API, not local files
 Research (multiple sources) confirms the Kindle desktop apps do **not** store
 reliable reading progress in a queryable local store:

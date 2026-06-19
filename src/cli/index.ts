@@ -4,9 +4,20 @@ import { DEFAULT_CONFIG_PATH, loadConfig } from "../config/config.js";
 import { CookieApiSource } from "../kindle/cookie-source.js";
 import { sampleFixtureSource } from "../kindle/fixture-source.js";
 import { CycleTlsTransport } from "../kindle/cycletls-transport.js";
-import { FetchTransport } from "../kindle/transport.js";
+import type { HttpTransport } from "../kindle/transport.js";
+import {
+  createTransport,
+  resolveTransportKind,
+} from "../kindle/transport-factory.js";
 import { ensureConfig } from "./setup.js";
 import { formatBookList } from "./format.js";
+
+/** Close the transport if it owns a worker process (CycleTLS); fetch is a no-op. */
+async function closeTransport(transport: HttpTransport): Promise<void> {
+  if (transport instanceof CycleTlsTransport) {
+    await transport.close();
+  }
+}
 
 const program = new Command();
 program
@@ -20,7 +31,11 @@ kindle
   .description("List Kindle books and reading progress")
   .option("--fixture", "Use offline sample data (no network/credentials)")
   .option("--verbose", "Print raw API responses to stderr for debugging")
-  .option("--fetch", "Use Node built-in fetch instead of CycleTLS (no TLS impersonation)")
+  .option(
+    "--fetch",
+    "Use Node built-in fetch instead of CycleTLS (no TLS impersonation). " +
+      "Also settable via EBOOK_SYNC_TRANSPORT=fetch.",
+  )
   .action(async (opts: { fixture?: boolean; verbose?: boolean; fetch?: boolean }) => {
     if (opts.fixture) {
       const books = await sampleFixtureSource().listBooks();
@@ -38,7 +53,7 @@ kindle
       );
     }
 
-    const transport = opts.fetch ? new FetchTransport() : new CycleTlsTransport();
+    const transport = createTransport(resolveTransportKind(opts));
     const source = new CookieApiSource(transport, {
       cookies: config.kindle.cookies,
       ...(config.kindle.deviceSessionToken
@@ -52,7 +67,7 @@ kindle
       console.log(`Kindle library (${books.length} books):`);
       console.log(formatBookList(books));
     } finally {
-      if ("close" in transport) await transport.close();
+      await closeTransport(transport);
     }
   });
 
