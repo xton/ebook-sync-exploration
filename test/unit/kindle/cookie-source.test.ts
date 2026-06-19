@@ -101,15 +101,74 @@ describe("CookieApiSource", () => {
     expect(b1?.progress?.fraction).toBeCloseTo(0.42);
   });
 
-  it("continues without progress when startReading fails, logs a warning", async () => {
+  it("continues without progress when startReading fails, logs a quiet summary", async () => {
     const transport = makeTransport({ reading: new Error("403 Forbidden") });
     const source = new CookieApiSource(transport, { cookies: COOKIES });
     const books = await source.listBooks();
     expect(books).toHaveLength(2);
     expect(books.every((b) => b.progress === undefined)).toBe(true);
+    // Default (non-verbose) mode summarises rather than printing one line per book.
+    const out = (process.stderr.write as unknown as { mock: { calls: unknown[][] } }).mock.calls
+      .map((c) => String(c[0]))
+      .join("");
+    expect(out).toMatch(/Progress unavailable for 2 of 2 books/);
+    expect(out).not.toMatch(/Could not fetch progress for B001/);
+  });
+
+  it("prints per-book warnings under verbose when startReading fails", async () => {
+    const transport = makeTransport({ reading: new Error("403 Forbidden") });
+    const source = new CookieApiSource(transport, { cookies: COOKIES, verbose: true });
+    await source.listBooks();
     expect(process.stderr.write).toHaveBeenCalledWith(
-      expect.stringContaining("[warn] Could not fetch progress"),
+      expect.stringContaining("[warn] Could not fetch progress for B001"),
     );
+  });
+
+  it("retries transient throttling statuses and recovers progress", async () => {
+    let attempts = 0;
+    const transport: HttpTransport & { calls: HttpRequest[] } = {
+      calls: [],
+      get: vi.fn().mockImplementation(async (req: HttpRequest): Promise<HttpResponse> => {
+        transport.calls.push(req);
+        if (req.url.includes("kindle-library")) {
+          return { status: 200, body: JSON.stringify({ itemsList: [{ asin: "B1", title: "T", authors: [] }] }) };
+        }
+        // Fail the first two startReading attempts with 500, then succeed.
+        if (attempts++ < 2) return { status: 500, body: '{"message":null}' };
+        return { status: 200, body: startReadingResponse(5000) };
+      }),
+    };
+    const source = new CookieApiSource(transport, { cookies: COOKIES });
+    const books = await source.listBooks();
+    expect(books[0]?.progress?.fraction).toBeCloseTo(0.5);
+    const readingCalls = transport.calls.filter((c) => c.url.includes("startReading"));
+    expect(readingCalls).toHaveLength(3); // 2 failed + 1 succeeded
+  });
+
+  it("bounds per-book concurrency", async () => {
+    const asins = Array.from({ length: 30 }, (_, i) => `B${i}`);
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const transport: HttpTransport & { calls: HttpRequest[] } = {
+      calls: [],
+      get: vi.fn().mockImplementation(async (req: HttpRequest): Promise<HttpResponse> => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        try {
+          await Promise.resolve();
+          if (req.url.includes("kindle-library")) {
+            return { status: 200, body: JSON.stringify({ itemsList: asins.map((a) => ({ asin: a, title: a, authors: [] })) }) };
+          }
+          return { status: 200, body: startReadingResponse(1000) };
+        } finally {
+          inFlight--;
+        }
+      }),
+    };
+    const source = new CookieApiSource(transport, { cookies: COOKIES });
+    await source.listBooks();
+    expect(maxInFlight).toBeLessThanOrEqual(6);
+    expect(maxInFlight).toBeGreaterThan(1);
   });
 
   it("throws with a diagnostic snippet when the library response has unexpected shape", async () => {

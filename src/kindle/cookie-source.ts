@@ -56,6 +56,38 @@ const cookieHeader = (c: KindleCookies): string =>
     `x-main=${c.xMain}`,
   ].join("; ");
 
+/** startReading is fired per-book; keep concurrency low so Amazon doesn't throttle. */
+const READING_CONCURRENCY = 6;
+/** HTTP statuses worth retrying — Amazon sheds load with 500s under burst traffic. */
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+const MAX_RETRIES = 3;
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Map over items with bounded concurrency. Unlike `Promise.all(items.map(...))`,
+ * at most `limit` calls are in flight at once, which avoids hammering Amazon
+ * into rate-limit 500s. Results preserve input order.
+ */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i] as T, i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 export class CookieApiSource implements KindleSource {
   constructor(
     private readonly transport: HttpTransport,
@@ -76,18 +108,28 @@ export class CookieApiSource implements KindleSource {
 
   private async getJson<T>(url: string): Promise<T> {
     const req: HttpRequest = { url, headers: this.headers() };
-    const res = await this.transport.get(req);
-    if (this.opts.verbose) {
-      process.stderr.write(
-        `[verbose] GET ${url} → ${res.status}\n${res.body.slice(0, 4000)}\n\n`,
-      );
+    let lastBody = "";
+    let lastStatus = 0;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const res = await this.transport.get(req);
+      if (this.opts.verbose) {
+        process.stderr.write(
+          `[verbose] GET ${url} → ${res.status}\n${res.body.slice(0, 4000)}\n\n`,
+        );
+      }
+      if (res.status === 200) return JSON.parse(res.body) as T;
+      lastStatus = res.status;
+      lastBody = res.body;
+      // Retry transient throttling/server errors with exponential backoff + jitter.
+      if (RETRYABLE_STATUSES.has(res.status) && attempt < MAX_RETRIES) {
+        await sleep(200 * 2 ** attempt + Math.floor(Math.random() * 100));
+        continue;
+      }
+      break;
     }
-    if (res.status !== 200) {
-      throw new Error(
-        `Kindle API ${url} returned HTTP ${res.status}: ${res.body.slice(0, 200)}`,
-      );
-    }
-    return JSON.parse(res.body) as T;
+    throw new Error(
+      `Kindle API ${url} returned HTTP ${lastStatus}: ${lastBody.slice(0, 200)}`,
+    );
   }
 
   private parseOrThrow<T>(
@@ -158,26 +200,46 @@ export class CookieApiSource implements KindleSource {
 
   async listBooks(): Promise<readonly KindleBook[]> {
     const items = await this.fetchLibrary();
-    const books = await Promise.all(
-      items.map(async (item) => {
+    const failures: { asin: string; title: string; error: string }[] = [];
+    const books = await mapWithConcurrency(
+      items,
+      READING_CONCURRENCY,
+      async (item) => {
         try {
           const reading = await this.fetchReading(item.asin);
-          // If endPosition is missing but metadataUrl present, try to fill it in
-          if ((reading.endPosition == null) && reading.metadataUrl) {
-            const endPosition = await this.fetchMetadataEndPosition(reading.metadataUrl).catch(() => undefined);
+          // If endPosition is missing but metadataUrl present, try to fill it in.
+          if (reading.endPosition == null && reading.metadataUrl) {
+            const endPosition = await this.fetchMetadataEndPosition(
+              reading.metadataUrl,
+            ).catch(() => undefined);
             if (endPosition != null) {
               return toKindleBook(item, { ...reading, endPosition });
             }
           }
           return toKindleBook(item, reading);
         } catch (err) {
-          process.stderr.write(
-            `[warn] Could not fetch progress for ${item.asin} (${item.title}): ${String(err)}\n`,
-          );
+          failures.push({ asin: item.asin, title: item.title, error: String(err) });
           return toKindleBook(item);
         }
-      }),
+      },
     );
+
+    // Default output stays quiet: one summary line. Per-book detail only under
+    // --verbose, so a handful of transient throttles don't bury the listing.
+    if (failures.length > 0) {
+      if (this.opts.verbose) {
+        for (const f of failures) {
+          process.stderr.write(
+            `[warn] Could not fetch progress for ${f.asin} (${f.title}): ${f.error}\n`,
+          );
+        }
+      } else {
+        process.stderr.write(
+          `[warn] Progress unavailable for ${failures.length} of ${items.length} ` +
+            `books (Amazon throttled or transient). Re-run with --verbose for details.\n`,
+        );
+      }
+    }
     return books;
   }
 }
