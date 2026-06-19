@@ -41,6 +41,11 @@ src/
 - **TLS fingerprinting:** requests go through a local impersonating transport
   (cycletls) by default; Playwright fallback if challenged. Cookies never leave
   the user's machine.
+- **Transport override:** `FetchTransport` (Node's built-in `fetch`) can be
+  selected with `--fetch` or `EBOOK_SYNC_TRANSPORT=fetch`. This is the right
+  choice where outbound TLS is re-originated by an egress proxy (Amazon sees the
+  proxy fingerprint, not ours) and CycleTLS's Go worker can't reach the network —
+  e.g. the hosted container. Selection lives in `kindle/transport-factory.ts`.
 
 ## Sync direction & write-back
 - MVP syncs **Kindle → KOSync** only.
