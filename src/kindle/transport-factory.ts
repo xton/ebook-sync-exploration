@@ -2,18 +2,16 @@
  * Transport selection.
  *
  * Two concrete transports exist (see decision log):
- *   - CycleTlsTransport: impersonates a browser's TLS fingerprint. Required on a
- *     normal machine, where Amazon blocks plain `fetch`/`curl` fingerprints.
- *   - FetchTransport: Node's built-in fetch. Simpler and dependency-free, but
- *     gets fingerprint-challenged on a direct connection.
+ *   - FetchTransport: Node's built-in fetch. The default — proven against
+ *     read.amazon.com both in the hosted container (where the egress proxy
+ *     re-originates TLS) and on a direct connection. No native deps, no worker.
+ *   - CycleTlsTransport: impersonates a browser's TLS fingerprint. Kept as an
+ *     opt-in fallback for the case where Amazon fingerprint-challenges a direct
+ *     `fetch` connection. Heavy (spawns a Go worker) and can't traverse the
+ *     container's egress proxy, so it is no longer the default.
  *
- * In a hosted/container environment the outbound egress proxy terminates and
- * re-originates TLS, so Amazon sees the proxy's fingerprint, not ours — plain
- * fetch works there and CycleTLS's Go worker can't traverse the proxy. We keep
- * CycleTLS as the documented default but let the environment switch the default
- * via `EBOOK_SYNC_TRANSPORT=fetch` (e.g. exported once in the container) so
- * `--fetch` need not be passed on every invocation. The `--fetch` CLI flag
- * forces fetch regardless of environment.
+ * Default is fetch; opt into impersonation with `--cycletls` or
+ * `EBOOK_SYNC_TRANSPORT=cycletls`.
  */
 import { FetchTransport, type HttpTransport } from "./transport.js";
 import { CycleTlsTransport } from "./cycletls-transport.js";
@@ -23,19 +21,21 @@ export type TransportKind = "fetch" | "cycletls";
 export const TRANSPORT_ENV_VAR = "EBOOK_SYNC_TRANSPORT";
 
 /**
- * Decide which transport to use. Precedence: explicit `--fetch` flag, then the
- * `EBOOK_SYNC_TRANSPORT` env var, then the CycleTLS default.
+ * Decide which transport to use. Precedence: explicit flags (`--cycletls` then
+ * `--fetch`), then the `EBOOK_SYNC_TRANSPORT` env var, then the fetch default.
  */
 export function resolveTransportKind(
-  opts: { fetch?: boolean },
+  opts: { fetch?: boolean; cycletls?: boolean },
   env: Record<string, string | undefined> = process.env,
 ): TransportKind {
+  if (opts.cycletls) return "cycletls";
   if (opts.fetch) return "fetch";
   const fromEnv = env[TRANSPORT_ENV_VAR]?.trim().toLowerCase();
   if (fromEnv === "fetch" || fromEnv === "cycletls") return fromEnv;
-  return "cycletls";
+  return "fetch";
 }
 
 export function createTransport(kind: TransportKind): HttpTransport {
   return kind === "fetch" ? new FetchTransport() : new CycleTlsTransport();
 }
+

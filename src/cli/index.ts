@@ -33,10 +33,15 @@ kindle
   .option("--verbose", "Print raw API responses to stderr for debugging")
   .option(
     "--fetch",
-    "Use Node built-in fetch instead of CycleTLS (no TLS impersonation). " +
-      "Also settable via EBOOK_SYNC_TRANSPORT=fetch.",
+    "Force Node's built-in fetch transport (the default).",
   )
-  .action(async (opts: { fixture?: boolean; verbose?: boolean; fetch?: boolean }) => {
+  .option(
+    "--cycletls",
+    "Use the CycleTLS browser-impersonating transport instead of fetch, " +
+      "for direct connections that Amazon fingerprint-challenges. " +
+      "Also settable via EBOOK_SYNC_TRANSPORT=cycletls.",
+  )
+  .action(async (opts: { fixture?: boolean; verbose?: boolean; fetch?: boolean; cycletls?: boolean }) => {
     if (opts.fixture) {
       const books = await sampleFixtureSource().listBooks();
       console.log(`Kindle library (${books.length} books):`);
