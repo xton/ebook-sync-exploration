@@ -17,6 +17,29 @@ export const ConfigSchema = z.object({
       deviceSessionToken: z.string().optional(),
     })
     .optional(),
+  kosync: z
+    .object({
+      /** Base URL of the KOSync server (e.g. https://sync.koreader.rocks). */
+      serverUrl: z.string(),
+      username: z.string(),
+      /** Plaintext password (same one used in KOReader); md5'd into x-auth-key. */
+      password: z.string(),
+      /**
+       * Documents to track. KOSync has no library-listing endpoint, so the set
+       * of books to show is user-curated: each pairs the opaque document hash
+       * (KOReader's partial-md5 of the file) with human-readable labels.
+       */
+      documents: z
+        .array(
+          z.object({
+            hash: z.string(),
+            title: z.string().optional(),
+            authors: z.array(z.string()).default([]),
+          }),
+        )
+        .default([]),
+    })
+    .optional(),
 });
 export type Config = z.infer<typeof ConfigSchema>;
 

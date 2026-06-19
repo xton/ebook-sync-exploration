@@ -12,10 +12,14 @@ Each checkpoint is independently demo-able.
   last-read timestamp). `--fixture` runs offline.
 - **Demo:** `kindle list --fixture` now; live cookies once supplied.
 
-## Checkpoint 2 — List KOSync books & progress
+## Checkpoint 2 — List KOSync books & progress ✅
 - Implement `KosyncClient` (KOSync REST: auth, `GET /syncs/progress/:doc`).
-- CLI: `ebook-sync kosync list`.
-- **Demo:** run against a KOSync server (Crosspoint / self-hosted).
+- CLI: `ebook-sync kosync list` (`--fixture` offline; `--verbose`).
+- KOSync has no library-listing endpoint, so the books to show are
+  **user-curated**: a `kosync.documents` list in config pairs each opaque
+  document hash with display labels (title/authors the server doesn't store).
+- **Demo:** `kosync list --fixture` now; live against a KOSync server
+  (koreader.rocks / Crosspoint / self-hosted) once `kosync` config is supplied.
 
 ## Checkpoint 3 — Pair books (TUI)
 - Fuzzy match titles/authors across both libraries to suggest pairings.

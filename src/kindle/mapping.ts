@@ -2,12 +2,11 @@
  * Pure translation: raw Cloud Reader API shapes → domain types.
  * No I/O. This is the unit-tested core of the Kindle adapter.
  */
-import { asin, type KindleBook, type Progress } from "../domain/types.js";
+import { asin, clampFraction, type KindleBook, type Progress } from "../domain/types.js";
 import type { LibraryItem, StartReadingResponse } from "./api-types.js";
 
-/** Clamp a number into the inclusive [0, 1] range. */
-export const clampFraction = (n: number): number =>
-  Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0;
+// Re-exported for backwards compatibility; the canonical home is `domain/types`.
+export { clampFraction };
 
 /**
  * Compute reading fraction (0..1) from a startReading response.

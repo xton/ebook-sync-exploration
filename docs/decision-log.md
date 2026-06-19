@@ -2,6 +2,23 @@
 
 Append-only. Newest first.
 
+## 2026-06-19 — KOSync listing is user-curated (no library endpoint)
+The KOSync protocol (KOReader's Spore spec, `plugins/kosync.koplugin/api.json`)
+has **no "list my books" endpoint** — it only answers
+`GET /syncs/progress/:document` for a hash you already hold. So `kosync list`
+can't enumerate a library the way `kindle list` does. Decision: the set of
+documents to show is **user-curated** in config (`kosync.documents`: each entry
+pairs the opaque document hash with display title/authors the server never
+stores). This is honest about the protocol and feeds straight into Checkpoint 3
+pairing (the hash is exactly the ASIN↔hash key). Wire details confirmed against
+the upstream spec: auth via `x-auth-user` + `x-auth-key = md5(password)` (KOReader
+hashes the password client-side), `Accept: application/vnd.koreader.v1+json`,
+progress record `{ document, progress, percentage, device, device_id, timestamp }`
+where `percentage` is a 0..1 fraction and `timestamp` is Unix seconds. The KOSync
+HTTP seam is kept separate from the Kindle transport: KOSync is a plain JSON REST
+server (no TLS-fingerprint games), so the default is just `fetch`, and the seam
+carries method+body (GET to read now, PUT to write at Checkpoint 4).
+
 ## 2026-06-19 — `at-main` token refresh: understood, deferred (open question)
 Captured so it isn't lost; **no implementation yet.** Observation: the `at-main`
 cookie is a short-lived access token (value prefix `Atza|…`); once it lapses,
