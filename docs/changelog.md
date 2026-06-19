@@ -16,3 +16,13 @@
 - Transport selection: `--fetch` flag and `EBOOK_SYNC_TRANSPORT` env var choose
   Node's built-in fetch over CycleTLS (for proxied/container environments where
   CycleTLS can't run); logic lives in `kindle/transport-factory.ts`.
+
+### Changed
+- `kindle list` now fetches per-book progress with **bounded concurrency** (6 at
+  a time) and **retries transient throttling** (HTTP 429/5xx) with exponential
+  backoff. Firing all `startReading` requests at once made Amazon shed load with
+  HTTP 500s, dropping progress for many books; this recovers it (≈205/222 vs
+  ≈137/222 in testing).
+- Per-book progress failures no longer print one stderr line each. Default output
+  is a single summary (`Progress unavailable for N of M books…`); full per-book
+  detail is shown only under `--verbose`.
