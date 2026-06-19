@@ -15,6 +15,15 @@
 - `--verbose` flag to dump raw API responses to stderr for debugging.
 - Transport selection (`kindle/transport-factory.ts`): `EBOOK_SYNC_TRANSPORT`
   env var plus `--fetch` / `--cycletls` flags.
+- **KOSync adapter + `ebook-sync kosync list`** (Checkpoint 2): `KosyncClient`
+  (REST: `GET /users/auth`, `GET /syncs/progress/:document`; `x-auth-key =
+  md5(password)`) behind an injectable `KosyncTransport` (fetch by default),
+  a pure `mapping.ts` (progress record → domain `Progress`; KOSync `percentage`
+  is a 0..1 fraction, `timestamp` is Unix seconds), and `KosyncApiSource` /
+  `KosyncFixtureSource` paralleling the Kindle source. `--fixture` runs offline;
+  `--verbose` dumps raw responses. Config gains an optional `kosync` block with
+  a user-curated list of tracked documents (hash + labels), since KOSync has no
+  library-listing endpoint.
 
 ### Changed
 - **`FetchTransport` is now the default transport;** CycleTLS is an opt-in
